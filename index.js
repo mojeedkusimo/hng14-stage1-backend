@@ -68,35 +68,67 @@ const getCountry = async (name) => {
 
 app.get('/api/profiles', async (req, res) => {
 
-    const name = req.query.name;
-    const result = await getName(name);
+    const { gender, country_id, age_group } = req.query;
 
-    const isConfident = result.probability >= 0.7 & result.count >= 100 ? true : false;
-
-
+    let dbCopy = database;
 
     try {
 
-        if (!name) return res.status(400).json({ "status": "error", "message": "Missing or empty name" });
+        if (gender) {
+            dbCopy = dbCopy.filter(item => item.gender === gender.toLowerCase());
+        }
 
-        if (!isNaN(name)) return res.status(422).json({ "status": "error", "message": "Non-string name" });
+        if (country_id) {
+            dbCopy = dbCopy.filter(item => item.country_id === country_id.toUpperCase());
+        }
 
-        if (!result.gender || result.count == 0) return res.status(500).json({ "status": "error", "message": "No prediction available for the provided name" });
-
+        if (age_group) {
+            dbCopy = dbCopy.filter(item => item.age_group === age_group.toLowerCase());
+        }
         return res.status(200).json({
             status: "success",
-            data: {
-                name: name,
-                gender: result.gender,
-                probability: result.probability,
-                sample_size: result.count,
-                is_confident: isConfident,
-                processed_at: new Date().toISOString()
-            }
+            count: dbCopy.length,
+            data: dbCopy
         });
 
     } catch (e) {
-        return res.status(500).send({ "status": "error", "message": "Could not fetch any name at this time." });
+        return res.status(500).send({ "status": "error", "message": "Internal server error." });
+    }
+});
+
+
+app.get('/api/profiles/all', async (req, res) => {
+
+    try {
+
+        return res.status(200).json({
+            status: "success",
+            data: database
+        });
+
+    } catch (e) {
+        return res.status(500).send({ "status": "error", "message": "Internal server error." });
+    }
+});
+
+app.get('/api/profiles/:id', async (req, res) => {
+
+    const uuid = req.params.id;
+
+    try {
+        const nameData = database.find(item => item.id === uuid);
+
+        if (!nameData) {
+            return res.status(404).json({ "status": "error", "message": "Record does not exist" });
+        }
+
+        return res.status(200).json({
+            status: "success",
+            data: nameData
+        });
+
+    } catch (e) {
+        return res.status(500).send({ "status": "error", "message": "Internal server error." });
     }
 });
 
@@ -114,7 +146,11 @@ app.post('/api/profiles', async (req, res) => {
 
         if (!isNaN(name)) return res.status(422).json({ "status": "error", "message": "Non-string name" });
 
-        if (!resultName.gender || resultName.count == 0) return res.status(500).json({ "status": "error", "message": "No prediction available for the provided name" });
+        if (!resultName.gender || resultName.count === 0) return res.status(502).json({ "status": "error", "message": "Genderize returned an invalid response" });
+
+        if (!resultAge.age) return res.status(502).json({ "status": "error", "message": "Agifiy returned an invalid response" });
+
+        if (!resultCountry.country.length === 0) return res.status(502).json({ "status": "error", "message": "Nationalize returned an invalid response" });
 
         const newName = {
             id: uuid,
@@ -130,8 +166,6 @@ app.post('/api/profiles', async (req, res) => {
         }
 
         const uniqueNameChecker = database.find(item => item.name === newName.name);
-        // console.log(database);
-        // console.log(uniqueNameChecker);
 
         if (!uniqueNameChecker) {
             database.push(newName);
@@ -149,10 +183,31 @@ app.post('/api/profiles', async (req, res) => {
         });
 
     } catch (e) {
-        return res.status(500).send({ "status": "error", "message": "Could not fetch any name at this time." });
+        return res.status(500).send({ "status": "error", "message": "Internal server error" });
     }
 });
 
+app.delete('/api/profiles/:id', async (req, res) => {
+
+    const uuid = req.params.id;
+
+    try {
+        const nameData = database.find(item => item.id === uuid);
+
+        if (!nameData) {
+
+            return res.status(404).json({ "status": "error", "message": "Record does not exist" });
+        }
+
+        const index = database.findIndex(item => item.id === uuid);
+
+        database.splice(index, 1);
+        return res.status(204).send();
+
+    } catch (e) {
+        return res.status(500).send({ "status": "error", "message": "Internal server error." });
+    }
+});
 
 app.listen(PORT, () => {
     console.log(`server listening on port ${PORT}`);
